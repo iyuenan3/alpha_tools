@@ -40,6 +40,10 @@ def check_alpha_submission(alpha_id):
         return False
 
     checks = result["is"]["checks"]
+    fail_check = [item for item in checks if item['result'] == 'FAIL']
+    for item in fail_check:
+        logging.info(f"Alpha {alpha_id} Check Submission FAIL Item: {item}")
+
     if all(check.get("result") == "PASS" for check in checks):
         if retry_request(SESS.patch, base_url, json={"color": "BLUE"}):
             logging.info(f"Alpha {alpha_id} Check Submission PASS, Mark Alpha in BLUE.")
@@ -47,6 +51,10 @@ def check_alpha_submission(alpha_id):
             logging.warning(f"Alpha {alpha_id} Check Submission PASS, But Mark Alpha in BLUE Fail.")
         return True
     else:
+        if retry_request(SESS.patch, base_url, json={"color": None}):
+            logging.info(f"Alpha {alpha_id} Check Submission FAIL, Clear Alpha Color.")
+        else:
+            logging.warning(f"Alpha {alpha_id} Check Submission FAIL, Clear Alpha Color Fail.")
         return False
 
 def get_alpha_list():
@@ -129,5 +137,5 @@ def get_submited_alphas():
 if __name__ == "__main__":
     setup_logging(log_file='check.log')
     SESS       = global_sign_in()
-    #get_checked_alphas()
-    get_submited_alphas()
+    get_checked_alphas()
+    #get_submited_alphas()
