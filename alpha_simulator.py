@@ -15,8 +15,6 @@ class AlphaSimulator:
 
         :param max_concurrent     : 最大并发数
         :param alpha_list_file    : Alpha 列表文件路径
-        :param alphas_failed      : 无法进行 Simulate 的 Alphas 保存文件
-        :param alphas_succeed     : IS CHECKS 中没有 FAIL 的 Alphas 保存文件
         :param alphas_simulated   : 已完成 Simulate 的 Alphas 保存文件
         :param alphas_queue       : 等待队列中的 Alphas 保存文件
         :param active_simulations : 正在 Simulate 的 Alpha location url
@@ -26,8 +24,6 @@ class AlphaSimulator:
         """
         self.max_concurrent      = max_concurrent
         self.alpha_list_file     = alpha_list_file
-        self.alphas_failed       = 'alphas_simulate_failed.csv'
-        self.alphas_succeed      = 'alphas_simulate_succeed.csv'
         self.alphas_simulated    = 'alphas_simulated.csv'
         self.alphas_queue        = 'alphas_simulate_queue.csv'
         self.active_simulations  = []
@@ -102,9 +98,6 @@ class AlphaSimulator:
                 time.sleep(5)
                 count += 1
         logging.error(f"Simulation request failed after {count} attempts.")
-        with open(self.alphas_failed, 'a', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=alpha.keys())
-            writer.writerow(alpha)
         return None
 
     def load_new_alpha_and_simulate(self):
@@ -155,19 +148,6 @@ class AlphaSimulator:
                 continue
             alpha_id  = sim_progress.get("id")
             status    = sim_progress.get("status")
-            is_checks = sim_progress.get("is", {}).get("checks", None)
-            if not is_checks or 'FAIL' in str(is_checks):
-                logging.info(f"Alpha id: {alpha_id} IS Testing Failed.")
-            else:
-                try:
-                    response = self.session.patch(f"https://api.worldquantbrain.com/alphas/{alpha_id}", json={"color": "GREEN"})
-                    response.raise_for_status()
-                    logging.info(f"Alpha id: {alpha_id} IS Testing PASS, marked in Green.")
-                except requests.exceptions.RequestException as e:
-                    logging.error(f"Error in sending simulation request: {e}")
-                with open(self.alphas_succeed, 'a', newline='') as file:
-                    writer = csv.DictWriter(file, fieldnames=sim_progress.keys())
-                    writer.writerow(sim_progress)
             logging.info(f"Alpha id: {alpha_id} ended with status: {status}. Removing from active list.")
             self.active_simulations.remove(sim_url)
             with open(self.alphas_simulated, 'a', newline='') as file:

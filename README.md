@@ -39,9 +39,7 @@ Brain Alpha 是一个基于 Python 的项目，旨在利用 WorldQuant BRAIN 平
    python alpha_simulator.py
    ```
 3. 模拟结果：
-   - 无法进行 Simulate 的 Alpha 表达式保存到：`alphas_simulate_failed.csv`
    - 已完成 Simulate 的 Alpha 表达式保存到：`alphas_simulated.csv`
-   - IS CHECKS 中没有 FAIL 的 Alpha 表达式保存到：`alphas_simulate_succeed.csv`
 
 ### Alpha Check
 
@@ -69,9 +67,7 @@ brain_alpha/
 ├── alpha_creator.py              # Alpha Creator 脚本
 ├── alpha_simulator.py            # Alpha Simulator 脚本
 ├── alphas_pending_simulated.csv  # 待模拟的 Alpha 表达式文件
-├── alphas_simulate_failed.csv    # 无法进行 Simulate 的 Alphas
 ├── alphas_simulate_queue.csv     # 等待队列中的 Alphas
-├── alphas_simulate_succeed.csv   # IS CHECKS 中没有 FAIL 的 Alphas
 ├── alphas_simulated.csv          # 所有已完成 Simulate 的 Alphas
 ├── brain_credential.txt          # 用户凭据文件
 ├── requirements.txt              # 依赖包
