@@ -55,7 +55,32 @@ Brain Alpha 是一个基于 Python 的项目，旨在利用 WorldQuant BRAIN 平
    python alpha_check.py
    ```
 
+### Monitor Simulation
+
+#### 主要功能
+`monitor_simulation.sh` 是一个用于监控 `simulation.log` 日志文件的 Bash 脚本。如果日志文件在 10 分钟内未更新，则脚本会尝试终止 `alpha_simulator.py` 进程，然后重新启动该进程。该脚本可用于保障 `alpha_simulator.py` 的持续运行，避免因异常停止而导致的服务中断。
+
 ## 使用方法
+1. 赋予执行权限：
+   在终端中运行以下命令，确保脚本具有可执行权限：
+   ```bash
+   chmod +x monitor_simulation.sh
+   ```
+2. 运行守护进程:
+   使用 `nohup` 让脚本在后台运行，并将日志输出到 `monitor.log`：
+   ```bash
+   nohup ./monitor_simulation.sh >> monitor.log 2>&1 &
+   ```
+3. 查看守护进程日志:
+   可以使用以下命令实时查看 `monitor.log` 的日志输出：
+   ```bash
+   tail -f monitor.log
+   ```
+4. 终止守护进程:
+   如果需要停止 `monitor_simulation.sh`，可以使用 `pkill` 命令：
+   ```bash
+   pkill -f monitor_simulation.sh
+   ```
 
 ### 项目文件结构
 ```
@@ -67,8 +92,8 @@ brain_alpha/
 ├── alpha_creator.py              # Alpha Creator 脚本
 ├── alpha_simulator.py            # Alpha Simulator 脚本
 ├── alphas_pending_simulated.csv  # 待模拟的 Alpha 表达式文件
-├── alphas_simulate_queue.csv     # 等待队列中的 Alphas
 ├── alphas_simulated.csv          # 所有已完成 Simulate 的 Alphas
+├── monitor_simulation.sh         # 用于监控 simulation.log
 ├── brain_credential.txt          # 用户凭据文件
 ├── requirements.txt              # 依赖包
 ├── check.log                     # Alpha Check 日志
@@ -101,7 +126,8 @@ brain_alpha/
 4. 脚本会生成一个名为 `alphas_pending_simulated.csv` 的文件，其中包含生成的 Alpha 表达式。
 5. 运行 Simulate：
    ```bash
-   python alpha_simulator.py
+   chmod +x monitor_simulation.sh
+   nohup ./monitor_simulation.sh >> monitor.log 2>&1 &
    ```
 
 ---

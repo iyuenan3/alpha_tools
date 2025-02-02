@@ -9,163 +9,133 @@ from pytz import timezone
 from auth_utils import global_sign_in, setup_logging
 
 class AlphaSimulator:
-    def __init__(self, max_concurrent: int, alpha_list_file:str):
-        """
-        初始化 AlphaSimulator 类。
-
-        :param max_concurrent     : 最大并发数
-        :param alpha_list_file    : Alpha 列表文件路径
-        :param alphas_simulated   : 已完成 Simulate 的 Alphas 保存文件
-        :param alphas_queue       : 等待队列中的 Alphas 保存文件
-        :param active_simulations : 正在 Simulate 的 Alpha location url
-        :param session            : 登入窗口
-        :param sim_queue_ls       : 等待队列中的 Alphas
-        :param batch_num_per_queue: 每个队列的批次数量
-        """
-        self.max_concurrent      = max_concurrent
-        self.alpha_list_file     = alpha_list_file
-        self.alphas_simulated    = 'alphas_simulated.csv'
-        self.alphas_queue        = 'alphas_simulate_queue.csv'
-        self.active_simulations  = []
-        self.session             = self.sign_in()
-        self.sim_queue_ls        = []
+    def __init__(self, max_concurrent: int, alpha_list_file: str):
+        self.max_concurrent = max_concurrent
+        self.alpha_list_file = alpha_list_file
+        self.alphas_simulated = 'alphas_simulated.csv'
+        self.active_simulations = []
+        self.session = global_sign_in()
+        self.sim_queue_ls = []
         self.batch_num_per_queue = max_concurrent * 2
 
-    def sign_in(self):
-        session = global_sign_in()
-        logging.info("Login to BRAIN successfully.")
-        return session
-
-    def read_alphas_from_csv_in_batches(self, batch_num_per_queue):
-        '''
-        1. 打开 alpha_list_file 文件
-        2. 取出 batch_num_per_queue 个 alpha，放入列表变量 alphas
-        3. 取出后覆写 alpha_list_file 文件
-        4. 把取出的 alphas，写到 alphas_queue 文件中，方便随时监控排队中的 alpha
-        5. 返回列表变量 alphas
-        '''
+    def read_alphas_from_csv_in_batches(self):
         alphas = []
         temp_file_name = self.alpha_list_file + '.tmp'
+
         with open(self.alpha_list_file, 'r') as file, open(temp_file_name, 'w', newline='') as temp_file:
-            reader     = csv.DictReader(file)
+            reader = csv.DictReader(file)
             fieldnames = reader.fieldnames
-            writer     = csv.DictWriter(temp_file, fieldnames=fieldnames)
+            writer = csv.DictWriter(temp_file, fieldnames=fieldnames)
             writer.writeheader()
-            for _ in range(batch_num_per_queue):
-                try:
-                    row = next(reader)
-                    if 'settings' in row:
-                        if isinstance(row['settings'], str):
-                            try:
-                                row['settings'] = ast.literal_eval(row['settings'])
-                            except (ValueError, SyntaxError):
-                                logging.error(f"Error evaluating settings: {row['settings']}")
-                        elif isinstance(row['settings'], dict):
-                            pass
-                        else:
-                            logging.error(f"Unexpected type for settings: {type(row['settings'])}")
-                    alphas.append(row)
-                except StopIteration:
+
+            for _ in range(self.batch_num_per_queue):
+                row = next(reader, None)
+                if not row:
                     break
-            for remaining_row in reader:
-                writer.writerow(remaining_row)
+
+                if 'settings' in row:
+                    try:
+                        row['settings'] = ast.literal_eval(row['settings']) if isinstance(row['settings'], str) else row['settings']
+                    except (ValueError, SyntaxError):
+                        logging.error(f"Error evaluating settings: {row['settings']}")
+                        continue
+                alphas.append(row)
+
+            writer.writerows(reader)
+
         os.replace(temp_file_name, self.alpha_list_file)
-        if alphas:
-            with open(self.alphas_queue, 'w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=alphas[0].keys())
-                if file.tell() == 0:
-                    writer.writeheader()
-                writer.writerows(alphas)
         return alphas
 
     def simulate_alpha(self, alpha):
-        count = 0
-        while True:
+        for attempt in range(36):
             try:
                 response = self.session.post('https://api.worldquantbrain.com/simulations', json=alpha)
                 response.raise_for_status()
                 if "Location" in response.headers:
-                    logging.info("Alpha location retrieved successfully.")
-                    logging.info(f"Location: {response.headers['Location']}")
+                    logging.info(f"Alpha location retrieved successfully: {response.headers['Location']}")
                     return response.headers['Location']
             except requests.exceptions.RequestException as e:
-                logging.error(f"Error in sending simulation request: {e}")
-                if count > 35:
-                    self.session = self.sign_in()
-                    logging.error("Error occurred too many times, skipping this alpha and re-logging in.")
-                    break
-                logging.error("Error in sending simulation request. Retrying after 5s...")
+                logging.error(f"Simulation request error: {e}. Retrying in 5s...")
                 time.sleep(5)
-                count += 1
-        logging.error(f"Simulation request failed after {count} attempts.")
+
+        logging.error("Simulation request failed after multiple attempts, re-logging in.")
+        self.session = global_sign_in()
         return None
 
     def load_new_alpha_and_simulate(self):
-        if len(self.sim_queue_ls) < 1:
-            self.sim_queue_ls = self.read_alphas_from_csv_in_batches(self.batch_num_per_queue)
+        if not self.sim_queue_ls:
+            self.sim_queue_ls = self.read_alphas_from_csv_in_batches()
+
         if len(self.active_simulations) >= self.max_concurrent:
-            logging.info(f"Max concurrent simulations reached ({self.max_concurrent}). Waiting 2 seconds")
+            logging.info(f"Max concurrent simulations reached ({self.max_concurrent}). Waiting 2s...")
             time.sleep(2)
             return
-        logging.info('Loading new alpha...')
-        try:
+
+        if self.sim_queue_ls:
             alpha = self.sim_queue_ls.pop(0)
-            logging.info(f"Starting simulation for alpha: {alpha['regular']} with settings: {alpha['settings']}")
+            logging.info(f"Simulating alpha: {alpha['regular']} with settings: {alpha['settings']}")
             location_url = self.simulate_alpha(alpha)
             if location_url:
                 self.active_simulations.append(location_url)
-        except IndexError:
+        else:
             logging.info("No more alphas available in the queue.")
 
-    def check_simulation_progress(self, simulation_progress_url):
+    def check_simulation_progress(self, url):
         try:
-            simulation_progress = self.session.get(simulation_progress_url)
-            simulation_progress.raise_for_status()
-            if simulation_progress.headers.get("Retry-After", 0) == 0:
-                alpha_id = simulation_progress.json().get("alpha")
-                if alpha_id:
-                    alpha_response = self.session.get(f"https://api.worldquantbrain.com/alphas/{alpha_id}")
-                    alpha_response.raise_for_status()
-                    return alpha_response.json()
-                else:
-                    return simulation_progress.json()
-            else:
-                return None
+            response = self.session.get(url)
+            response.raise_for_status()
+            if response.headers.get("Retry-After", 0) == 0:
+                alpha_id = response.json().get("alpha")
+                return self.session.get(f"https://api.worldquantbrain.com/alphas/{alpha_id}").json() if alpha_id else response.json()
         except requests.exceptions.RequestException as e:
             logging.error(f"Error fetching simulation progress: {e}")
-            self.session = self.sign_in()
-            return None
+            self.session = global_sign_in()
+        return None
 
     def check_simulation_status(self):
-        count = 0
-        if len(self.active_simulations) == 0:
-            logging.info("No one is in active simulation now")
-            return None
-        for sim_url in self.active_simulations:
-            sim_progress = self.check_simulation_progress(sim_url)
-            if sim_progress is None:
-                count += 1
-                continue
-            alpha_id  = sim_progress.get("id")
-            status    = sim_progress.get("status")
-            logging.info(f"Alpha id: {alpha_id} ended with status: {status}. Removing from active list.")
-            self.active_simulations.remove(sim_url)
-            with open(self.alphas_simulated, 'a', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=sim_progress.keys())
-                writer.writerow(sim_progress)
-        logging.info(f"Total {count} simulations are in process for account.")
+        if not self.active_simulations:
+            logging.info("No active simulations.")
+            return
+
+        pending_simulations = []
+
+        with open(self.alphas_simulated, 'a+', newline='') as file:
+            file.seek(0, os.SEEK_END)
+            is_empty = file.tell() == 0
+            writer = csv.DictWriter(file, fieldnames=["id", "regular"])
+            if is_empty:
+                writer.writeheader()
+
+            for sim_url in self.active_simulations:
+                result = self.check_simulation_progress(sim_url)
+                if result:
+                    logging.info(f"Alpha id: {result.get('id')} finished with status: {result.get('status')}")
+                    writer.writerow({"id": result.get("id"), "regular": result.get("regular")})
+                else:
+                    pending_simulations.append(sim_url)
+
+        self.active_simulations = pending_simulations
+        logging.info(f"{len(self.active_simulations)} simulations still in progress.")
 
     def manage_simulations(self):
-        while True:
+        try:
+            while True:
+                self.check_simulation_status()
+                self.load_new_alpha_and_simulate()
+                time.sleep(3)
+        except KeyboardInterrupt:
+            logging.info("Ctrl+C detected. Waiting for active simulations to finish before exiting...")
+            self.finish_active_simulations()
+            logging.info("All active simulations processed. Exiting safely.")
+
+    def finish_active_simulations(self):
+        while self.active_simulations:
             self.check_simulation_status()
-            self.load_new_alpha_and_simulate()
+            logging.info(f"Waiting for {len(self.active_simulations)} active simulations to complete...")
             time.sleep(3)
 
 if __name__ == "__main__":
-    setup_logging(log_file='simulation.log')
-    logging.info("Current time in Eastern is %s" % datetime.now(timezone('US/Eastern')).strftime('%Y-%m-%d'))
-
-    ALPHA_PENDING_SIMULATED = 'alphas_pending_simulated.csv'
-    MAX_CONCURRENT          = 10
-    simulator               = AlphaSimulator(MAX_CONCURRENT, ALPHA_PENDING_SIMULATED)
+    setup_logging(log_file='simulation.log', log_to_file=True, log_to_console=False)
+    logging.info(f"Current time in Eastern: {datetime.now(timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M:%S')}")
+    simulator = AlphaSimulator(max_concurrent=10, alpha_list_file='alphas_pending_simulated.csv')
     simulator.manage_simulations()

@@ -42,14 +42,17 @@ def retry_request(method, url, max_retries=10, timeout=300, delay=5, **kwargs):
                     return None
                     #raise RuntimeError(f"Request to {url} failed after {max_retries} re-login attempts.") from e
 
-def setup_logging(level=logging.INFO, log_file='app.log', log_to_file=True):
+def setup_logging(level=logging.INFO, log_file='app.log', log_to_file=True, log_to_console=True):
     """
-    设置日志配置，默认输出到控制台和文件，可选择关闭文件输出。
+    设置日志配置，可选择输出到控制台和文件。
     :param level: 日志级别，默认为 INFO
     :param log_file: 日志文件路径，默认为 'app.log'
     :param log_to_file: 是否将日志输出到文件，默认为 True
+    :param log_to_console: 是否将日志输出到终端，默认为 True
     """
-    handlers = [logging.StreamHandler()]
+    handlers = []
+    if log_to_console:
+        handlers.append(logging.StreamHandler())
     if log_to_file:
         handlers.append(logging.FileHandler(log_file, mode='w'))
     logging.basicConfig(
