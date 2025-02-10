@@ -4,6 +4,7 @@ import csv
 import requests
 import os
 import ast
+import signal
 from datetime import datetime
 from pytz import timezone
 from auth_utils import global_sign_in, setup_logging
@@ -17,6 +18,15 @@ class AlphaSimulator:
         self.session = global_sign_in()
         self.sim_queue_ls = []
         self.batch_num_per_queue = max_concurrent * 2
+        self.terminate = False
+        signal.signal(signal.SIGINT, self.handle_exit)
+
+    def handle_exit(self, signum, frame):
+        logging.info("Received SIGINT. Finishing active simulations before exiting...")
+        self.terminate = True
+        self.finish_active_simulations()
+        logging.info("All active simulations processed. Exiting safely.")
+        exit(0)
 
     def read_alphas_from_csv_in_batches(self):
         alphas = []
@@ -102,7 +112,7 @@ class AlphaSimulator:
         with open(self.alphas_simulated, 'a+', newline='') as file:
             file.seek(0, os.SEEK_END)
             is_empty = file.tell() == 0
-            writer = csv.DictWriter(file, fieldnames=["id", "regular"])
+            writer = csv.DictWriter(file, fieldnames=["id", "regular", "status"])
             if is_empty:
                 writer.writeheader()
 
@@ -110,7 +120,7 @@ class AlphaSimulator:
                 result = self.check_simulation_progress(sim_url)
                 if result:
                     logging.info(f"Alpha id: {result.get('id')} finished with status: {result.get('status')}")
-                    writer.writerow({"id": result.get("id"), "regular": result.get("regular")})
+                    writer.writerow({"id": result.get("id"), "regular": result.get("regular"), "status": result.get("status")})
                 else:
                     pending_simulations.append(sim_url)
 
@@ -119,14 +129,12 @@ class AlphaSimulator:
 
     def manage_simulations(self):
         try:
-            while True:
+            while not self.terminate:
                 self.check_simulation_status()
                 self.load_new_alpha_and_simulate()
                 time.sleep(3)
         except KeyboardInterrupt:
-            logging.info("Ctrl+C detected. Waiting for active simulations to finish before exiting...")
-            self.finish_active_simulations()
-            logging.info("All active simulations processed. Exiting safely.")
+            self.handle_exit(signal.SIGINT, None)
 
     def finish_active_simulations(self):
         while self.active_simulations:

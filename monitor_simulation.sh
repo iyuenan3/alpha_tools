@@ -6,7 +6,7 @@ PYTHON_SCRIPT="alpha_simulator.py"  # 需要运行的Python脚本
 MONITOR_LOG="monitor.log"  # 监控日志文件
 
 # 超时时间（单位：秒），如果日志文件超过此时间未更新，则重启脚本
-LOG_TIMEOUT=600  
+LOG_TIMEOUT=600
 
 # 先清空 monitor.log
 > "$MONITOR_LOG"
@@ -79,5 +79,5 @@ while true; do
         log_message "INFO" "$PYTHON_SCRIPT restarted with PID: $NEW_PID"
     fi
 
-    sleep 60  # 每 60 秒检查一次日志文件的更新时间
+    sleep 300
 done
